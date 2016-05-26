@@ -267,6 +267,127 @@ class Pool2DLayer(Layer):
                                         )
         return pooled
 
+class Pool3Layer(Layer):
+    """
+    2D pooling layer
+
+    Performs 2D mean or max-pooling over the two trailing axes
+    of a 4D input tensor.
+
+    Parameters
+    ----------
+    incoming : a :class:`Layer` instance or tuple
+        The layer feeding into this layer, or the expected input shape.
+
+    pool_size : integer or iterable
+        The length of the pooling region in each dimension.  If an integer, it
+        is promoted to a square pooling region. If an iterable, it should have
+        two elements.
+
+    stride : integer, iterable or ``None``
+        The strides between sucessive pooling regions in each dimension.
+        If ``None`` then ``stride = pool_size``.
+
+    pad : integer or iterable
+        Number of elements to be added on each side of the input
+        in each dimension. Each value must be less than
+        the corresponding stride.
+
+    ignore_border : bool
+        If ``True``, partial pooling regions will be ignored.
+        Must be ``True`` if ``pad != (0, 0)``.
+
+    mode : {'max', 'average_inc_pad', 'average_exc_pad'}
+        Pooling mode: max-pooling or mean-pooling including/excluding zeros
+        from partially padded pooling regions. Default is 'max'.
+
+    **kwargs
+        Any additional keyword arguments are passed to the :class:`Layer`
+        superclass.
+
+    See Also
+    --------
+    MaxPool2DLayer : Shortcut for max pooling layer.
+
+    Notes
+    -----
+    The value used to pad the input is chosen to be less than
+    the minimum of the input, so that the output of each pooling region
+    always corresponds to some element in the unpadded input region.
+
+    Using ``ignore_border=False`` prevents Theano from using cuDNN for the
+    operation, so it will fall back to a slower implementation.
+    """
+
+    def __init__(self, incoming, pool_size, stride=None, pad=(0, 0, 0),
+                 ignore_border=True, mode='max', **kwargs):
+        super(Pool3Layer, self).__init__(incoming, **kwargs)
+
+        self.pool_size = as_tuple(pool_size, 3)
+
+        if len(self.input_shape) != 5:
+            raise ValueError("Tried to create a 3D pooling layer with "
+                             "input shape %r. Expected 5 input dimensions "
+                             "(batchsize, channels, time, 2 spatial dimensions)."
+                             % (self.input_shape,))
+
+        if stride is None:
+            self.stride = self.pool_size
+        else:
+            self.stride = as_tuple(stride, 3)
+
+        self.pad = as_tuple(pad, 3)
+
+        self.ignore_border = ignore_border
+        self.mode = mode
+
+    def get_output_shape_for(self, input_shape):
+        output_shape = list(input_shape)  # copy / convert to mutable list
+
+        output_shape[2] = pool_output_length(input_shape[2],
+                                             pool_size=self.pool_size[0],
+                                             stride=self.stride[0],
+                                             pad=self.pad[0],
+                                             ignore_border=self.ignore_border,
+                                             )
+
+        output_shape[3] = pool_output_length(input_shape[3],
+                                             pool_size=self.pool_size[1],
+                                             stride=self.stride[1],
+                                             pad=self.pad[1],
+                                             ignore_border=self.ignore_border,
+                                             )
+        output_shape[4] = pool_output_length(input_shape[4],
+                                             pool_size=self.pool_size[2],
+                                             stride=self.stride[2],
+                                             pad=self.pad[2],
+                                             ignore_border=self.ignore_border,
+                                             )
+
+        return tuple(output_shape)
+
+    def get_output_for(self, input, **kwargs):
+        # Move 3rd dimension last and do a 1D pooling
+        pooled=input.dimshuffle((0,1,4,3,2))
+        pooled = downsample.max_pool_2d(pooled,
+                                        ds=(1,self.pool_size[0]),
+                                        st=(1,self.stride[0]),
+                                        ignore_border=self.ignore_border,
+                                        padding=(0,self.pad[0]),
+                                        mode=self.mode,
+                                        )
+
+        # Do normal 2D pooling
+        pooled = downsample.max_pool_2d(pooled.dimshuffle((0,1,4,3,2)),
+                                        ds=self.pool_size[1:],
+                                        st=self.stride[1:],
+                                        ignore_border=self.ignore_border,
+                                        padding=self.pad[1:],
+                                        mode=self.mode,
+                                        )
+
+        return pooled
+
 
 class MaxPool1DLayer(Pool1DLayer):
     """

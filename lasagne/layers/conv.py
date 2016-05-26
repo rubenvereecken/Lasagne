@@ -1,5 +1,5 @@
 import theano.tensor as T
-
+import theano.tensor.nnet.conv3d2d
 from .. import init
 from .. import nonlinearities
 from ..utils import as_tuple
@@ -536,3 +536,141 @@ class Conv2DLayer(BaseConvLayer):
         return conved
 
 # TODO: add Conv3DLayer
+class Conv3DLayer(BaseConvLayer):
+    """
+    lasagne.layers.Conv2DLayer(incoming, num_filters, filter_size,
+    stride=(1, 1), pad=0, untie_biases=False,
+    W=lasagne.init.GlorotUniform(), b=lasagne.init.Constant(0.),
+    nonlinearity=lasagne.nonlinearities.rectify, flip_filters=True,
+    convolution=theano.tensor.nnet.conv2d, **kwargs)
+
+    2D convolutional layer
+
+    Performs a 2D convolution on its input and optionally adds a bias and
+    applies an elementwise nonlinearity.
+
+    Parameters
+    ----------
+    incoming : a :class:`Layer` instance or a tuple
+        The layer feeding into this layer, or the expected input shape. The
+        output of this layer should be a 4D tensor, with shape
+        ``(batch_size, num_input_channels, input_rows, input_columns)``.
+
+    num_filters : int
+        The number of learnable convolutional filters this layer has.
+
+    filter_size : int or iterable of int
+        An integer or a 2-element tuple specifying the size of the filters.
+
+    stride : int or iterable of int
+        An integer or a 2-element tuple specifying the stride of the
+        convolution operation.
+
+    pad : int, iterable of int, 'full', 'same' or 'valid' (default: 0)
+        By default, the convolution is only computed where the input and the
+        filter fully overlap (a valid convolution). When ``stride=1``, this
+        yields an output that is smaller than the input by ``filter_size - 1``.
+        The `pad` argument allows you to implicitly pad the input with zeros,
+        extending the output size.
+
+        A single integer results in symmetric zero-padding of the given size on
+        all borders, a tuple of two integers allows different symmetric padding
+        per dimension.
+
+        ``'full'`` pads with one less than the filter size on both sides. This
+        is equivalent to computing the convolution wherever the input and the
+        filter overlap by at least one position.
+
+        ``'same'`` pads with half the filter size (rounded down) on both sides.
+        When ``stride=1`` this results in an output size equal to the input
+        size. Even filter size is not supported.
+
+        ``'valid'`` is an alias for ``0`` (no padding / a valid convolution).
+
+        Note that ``'full'`` and ``'same'`` can be faster than equivalent
+        integer values due to optimizations by Theano.
+
+    untie_biases : bool (default: False)
+        If ``False``, the layer will have a bias parameter for each channel,
+        which is shared across all positions in this channel. As a result, the
+        `b` attribute will be a vector (1D).
+
+        If True, the layer will have separate bias parameters for each
+        position in each channel. As a result, the `b` attribute will be a
+        3D tensor.
+
+    W : Theano shared variable, expression, numpy array or callableflip_filters
+        Initial value, expression or initializer for the weights.
+        These should be a 4D tensor with shape
+        ``(num_filters, num_input_channels, filter_rows, filter_columns)``.
+        See :func:`lasagne.utils.create_param` for more information.
+
+    b : Theano shared variable, expression, numpy array, callable or ``None``
+        Initial value, expression or initializer for the biases. If set to
+        ``None``, the layer will have no biases. Otherwise, biases should be
+        a 1D array with shape ``(num_filters,)`` if `untied_biases` is set to
+        ``False``. If it is set to ``True``, its shape should be
+        ``(num_filters, output_rows, output_columns)`` instead.
+        See :func:`lasagne.utils.create_param` for more information.
+
+    nonlinearity : callable or None
+        The nonlinearity that is applied to the layer activations. If None
+        is provided, the layer will be linear.
+
+    flip_filters : bool (default: True)
+        Whether to flip the filters before sliding them over the input,
+        performing a convolution (this is the default), or not to flip them and
+        perform a correlation. Note that for some other convolutional layers in
+        Lasagne, flipping incurs an overhead and is disabled by default --
+        check the documentation when using learned weights from another layer.
+
+    convolution : callable
+        The convolution implementation to use. Usually it should be fine to
+        leave this at the default value.
+
+    **kwargs
+        Any additional keyword arguments are passed to the `Layer` superclass.
+
+        Also see:
+            https://github.com/Lasagne/Lasagne/issues/27
+            https://groups.google.com/forum/#!msg/theano-users/1S9_bZgHxVw/0cQR9a4riFUJ
+            https://11350770138305416713.googlegroups.com/attach/55882baef511c4d1/test3dconv_miniexample.py
+
+    Attributes
+    ----------
+    W : Theano shared variable or expression
+        Variable or expression representing the filter weights.
+
+    b : Theano shared variable or expression
+        Variable or expression representing the biases.
+    """
+    def __init__(self, incoming, num_filters, filter_size, stride=(1, 1, 1),
+                 pad=0, untie_biases=False,
+                 W=init.GlorotUniform(), b=init.Constant(0.),
+                 nonlinearity=nonlinearities.rectify, flip_filters=True,
+                 convolution=theano.tensor.nnet.conv3d2d.conv3d, **kwargs):
+        assert max(stride)==1, 'Stride>1 not supported'
+        assert pad==0, 'padding not suported'
+        super(Conv3DLayer, self).__init__(incoming, num_filters, filter_size,
+                                          stride, pad, untie_biases, W, b,
+                                          nonlinearity, flip_filters, n=3,
+                                          **kwargs)
+        #self.input_shape=self.input_shape[0:1] + self.input_shape[2:3] + self.input_shape[1:2] + self.input_shape[3:]
+        self.convolution = convolution
+        self.shuffled_shape=tuple(self.input_shape[0:1] + self.input_shape[2:3] + self.input_shape[1:2] + self.input_shape[3:])
+        self.suffled_W_shape=(self.num_filters, self.filter_size[1],self.input_shape[1]) + self.filter_size[0:1] + self.filter_size[2:]
+
+
+    def convolve(self, input, **kwargs):
+        # We need to dimshuffle, as Theano assumes input in order  [Ns, Ts, C, Hs, Ws]
+        x=input.dimshuffle((0,2,1,3,4))
+        # FIXME: This should only be done once, probably
+        W=self.W.dimshuffle((0,2,1,3,4))
+        if self.flip_filters:
+            conved = self.convolution(x, W[:,::-1,:,::-1,::-1],
+                                      self.shuffled_shape, self.suffled_W_shape,)
+        else:
+            conved = self.convolution(x, W,
+                                      self.shuffled_shape, self.suffled_W_shape,)
+        # Shuffle back
+        return conved.dimshuffle((0,2,1,3,4))
