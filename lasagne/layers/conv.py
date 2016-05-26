@@ -1,4 +1,5 @@
 import theano.tensor as T
+import theano.tensor.nnet.conv3d2d
 
 from .. import init
 from .. import nonlinearities

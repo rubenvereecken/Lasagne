@@ -4,7 +4,7 @@ from .base import Layer
 from ..utils import as_tuple
 
 from theano.tensor.signal.pool import pool_2d
-
+from theano.tensor.signal import downsample
 
 __all__ = [
     "MaxPool1DLayer",
@@ -385,7 +385,6 @@ class Pool3Layer(Layer):
                                         padding=self.pad[1:],
                                         mode=self.mode,
                                         )
-
         return pooled
 
 
