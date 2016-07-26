@@ -714,9 +714,10 @@ class Conv3DLayer(BaseConvLayer):
 
     def convolve(self, input, **kwargs):
         # We need to dimshuffle, as Theano assumes input in order  [Ns, Ts, C, Hs, Ws]
-        x=input.dimshuffle((0,2,1,3,4))
+        print input
+        x=input.dimshuffle(0,2,1,3,4)
         # FIXME: This should only be done once, probably
-        W=self.W.dimshuffle((0,2,1,3,4))
+        W=self.W.dimshuffle(0,2,1,3,4)
         if self.flip_filters:
             conved = self.convolution(x, W[:,::-1,:,::-1,::-1],
                                       self.shuffled_shape, self.suffled_W_shape,)
@@ -724,7 +725,7 @@ class Conv3DLayer(BaseConvLayer):
             conved = self.convolution(x, W,
                                       self.shuffled_shape, self.suffled_W_shape,)
         # Shuffle back
-        return conved.dimshuffle((0,2,1,3,4))
+        return conved.dimshuffle(0,2,1,3,4)
 
 class TransposedConv2DLayer(BaseConvLayer):
     """
