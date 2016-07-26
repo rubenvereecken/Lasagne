@@ -34,7 +34,7 @@ __all__ = [
 class Pool2DDNNLayer(Layer):
     """
     2D pooling layer
-
+net
     Performs 2D mean- or max-pooling over the two trailing axes of a 4D input
     tensor. This is an alternative implementation which uses
     ``theano.sandbox.cuda.dnn.dnn_pool`` directly.
